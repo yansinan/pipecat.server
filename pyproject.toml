@@ -1,0 +1,11 @@
+[project]
+name = "pipecat-voice-agent"
+version = "0.1.0"
+description = "Pipecat voice agent – local Whisper STT + Edge TTS + LiteLLM"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "edge-tts",
+    "pipecat-ai[webrtc,whisper]>=1.4.0",
+    "python-dotenv",
+]
