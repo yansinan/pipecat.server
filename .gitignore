@@ -4,6 +4,6 @@ __pycache__/
 *.pyc
 *.pyo
 .env
-nltk_data/
 *.lock
 .DS_Store
+.archive/
