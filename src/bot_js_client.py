@@ -22,7 +22,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import uuid
 
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Request
@@ -107,14 +106,10 @@ async def index(request: Request):
 
 @app.post("/start")
 async def start_bot():
-    """JS 客户端连接入口：分配 session，返回 ICE Server 配置。
-
-    客户端收到 response 后用 sessionId + iceConfig 创建 PeerConnection。
-    """
-    session_id = str(uuid.uuid4())
-    logger.info(f"[{session_id}] /start received")
+    """JS 客户端连接入口：返回 ICE Server 配置。"""
+    logger.info(f"/start received")
     return {
-        "sessionId": session_id,
+        "sessionId": "default",
         "iceConfig": {
             "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}],
         },
@@ -215,7 +210,6 @@ async def _handle_offer(
 # SDP = Session Description Protocol。
 # JS 客户端 startBot() 返回后，通过 POST 发送 SDP Offer。
 # 服务端创建 PeerConnection，绑定 on_connection 回调启动 pipeline。
-# session_id 来自 POST /start 的返回值。
 
 @app.post("/sessions/{session_id}/api/offer")
 async def offer_session(
@@ -229,7 +223,6 @@ async def offer_session(
 # ---- ICE Candidates ----
 # ICE = Interactive Connectivity Establishment。
 # 浏览器推自己的 IP 地址列表，服务端登记到 aiortc 挑一个连。
-# 同 SDP Offer，session_id 来自 POST /start。
 
 @app.patch("/sessions/{session_id}/api/offer")
 async def ice_candidate_session(session_id: str, request: SmallWebRTCPatchRequest):
