@@ -4,7 +4,13 @@ cache/
 __pycache__/
 *.pyc
 *.pyo
+.archive/
 .env
 *.lock
 .DS_Store
+.hermes/
 .archive/node_modules/
+client/*/node_modules/
+client/.vite.
+client/.bin/
+client/@*
