@@ -9,6 +9,7 @@ the installed wheel for this platform.
 from __future__ import annotations
 
 import os
+import time
 from typing import AsyncGenerator
 
 from pipecat.frames.frames import (
@@ -16,10 +17,10 @@ from pipecat.frames.frames import (
     TranscriptionFrame,
     InterimTranscriptionFrame,
 )
-from pipecat.services.stt_service import STTService
+from pipecat.services.stt_service import SegmentedSTTService
 
 
-class WhisperSTTService(STTService):
+class WhisperSTTService(SegmentedSTTService):
     """Speech-to-text using faster-whisper (local Whisper model).
 
     Downloads the model on first use and caches it in ``./cache/whisper/``
@@ -60,6 +61,9 @@ class WhisperSTTService(STTService):
         self, audio: bytes
     ) -> AsyncGenerator[Frame | None, None]:
         """Transcribe *audio* (16-bit 16kHz mono PCM) with Whisper."""
+        from loguru import logger
+        import traceback
+        logger.info(f"[WHISPER-STT] run_stt called with {len(audio)}B audio from {traceback.extract_stack()[-3].name}")
         self._load_model()
 
         import io
@@ -84,11 +88,19 @@ class WhisperSTTService(STTService):
         full_text = ""
         for seg in segments:
             if seg.text.strip():
-                yield InterimTranscriptionFrame(seg.text, 1.0)
-                full_text += seg.text
+                yield InterimTranscriptionFrame(
+                    text=seg.text,
+                    user_id="user",
+                    timestamp=str(time.time()),
+                )
+            full_text += seg.text
 
         if full_text.strip():
-            yield TranscriptionFrame(full_text.strip(), 1.0)
+            yield TranscriptionFrame(
+                text=full_text.strip(),
+                user_id="user",
+                timestamp=str(time.time()),
+            )
         else:
             yield None
 

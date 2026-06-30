@@ -31,6 +31,8 @@ from pipecat.services.tts_service import TTSService, TTSSettings
 class EdgeTTSSettings(TTSSettings):
     """Runtime-updatable settings for EdgeTTSService."""
 
+    model: str | None = None
+    language: str | None = None
     voice: str = "zh-CN-XiaoxiaoNeural"
     rate: str = "+0%"
     volume: str = "+0%"

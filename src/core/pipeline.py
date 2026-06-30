@@ -1,8 +1,7 @@
 """
-Pipeline configuration for the Pipecat voice agent.
+Pipecat Voice Agent Pipeline — 官方 PrebuiltUI (pipecat-ai-prebuilt) + SmallWebRTC.
 
-Uses the modern (>=1.3.0) Worker / PipelineWorker API.
-Default transport: FastAPI WebSocket (self-hosted server, no API key).
+Order: input() → STT → user_agg → LLM → TTS → output() → assistant_agg
 """
 from __future__ import annotations
 
@@ -17,13 +16,16 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
+from pipecat.processors.frameworks.rtvi import RTVIProcessor
+from pipecat.processors.aggregators.llm_text_processor import LLMTextProcessor
 from pipecat.services.openai.llm import OpenAILLMService
+
+from src.services.llm import HeadroomLLMService
 
 from src.services.edge_tts import EdgeTTSService
 from src.services.whisper_stt import WhisperSTTService
 
 if TYPE_CHECKING:
-    from pipecat.processors.frame_processor import FrameProcessor
     from pipecat.transports.base_transport import BaseTransport
 
 
@@ -40,23 +42,18 @@ def build_pipeline(
 
     Order: input() → STT → user_agg → LLM → TTS → output() → assistant_agg
     """
-    vad = SileroVADAnalyzer()
+    from dotenv import load_dotenv
+
+    load_dotenv(override=True)
+
+    # --- Services ---
     stt = WhisperSTTService(model_size=whisper_model_size)
 
-    llm = OpenAILLMService(
-        api_key=llm_api_key or os.environ.get("LLM_API_KEY", "fuckkey"),
-        base_url=llm_base_url or os.environ.get(
-            "LLM_BASE_URL",
-            "http://serverhome.tail2e6efb.ts.net/litellm/headroom/v1/",
-        ),
-        model=llm_model,
+    llm = HeadroomLLMService(
+        base_url=llm_base_url or os.environ.get("LLM_BASE_URL", ""),
+        api_key=llm_api_key or os.environ.get("LLM_API_KEY", ""),
         settings=OpenAILLMService.Settings(
-            system_instruction=(
-                "You are a helpful voice assistant. "
-                "Keep responses concise and conversational. "
-                "Avoid markdown, bullet points, or anything that can't be spoken aloud. "
-                "Respond in the same language the user speaks."
-            ),
+            model=llm_model or os.environ.get("LLM_MODEL", "deepseek-v4-flash"),
             temperature=0.7,
             max_tokens=512,
         ),
@@ -64,17 +61,24 @@ def build_pipeline(
 
     tts = EdgeTTSService(voice=tts_voice)
 
+    # --- Context & Aggregators ---
     context = LLMContext()
     user_agg, assistant_agg = LLMContextAggregatorPair(
         context,
-        user_params=LLMUserAggregatorParams(vad_analyzer=vad),
+        user_params=LLMUserAggregatorParams(
+            vad_analyzer=SileroVADAnalyzer(),
+        ),
     )
 
-    processors: list[FrameProcessor] = [
+    # --- Pipeline ---
+    # 官方结构: input() → user_agg → llm → output() → assistant_agg
+    # 我们加 STT 和 TTS 作为独立服务
+    processors = [
         transport.input(),
         stt,
         user_agg,
         llm,
+        LLMTextProcessor(),
         tts,
         transport.output(),
         assistant_agg,
@@ -92,10 +96,7 @@ def build_websocket_transport(
     host: str = "0.0.0.0",
     port: int = 8765,
 ) -> BaseTransport:
-    """Self-hosted WebSocket transport via FastAPI + uvicorn.
-
-    Client connects via browser console or ws tool.
-    """
+    """Build a FastAPI WebSocket transport for the RawPCM path."""
     from pipecat.transports.websocket.fastapi import (
         FastAPIWebsocketParams,
         FastAPIWebsocketTransport,
