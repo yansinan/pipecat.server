@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from pipecat.transports.base_transport import TransportParams
@@ -87,7 +88,19 @@ app.add_middleware(
 
 @app.get("/", include_in_schema=False)
 async def index(request: Request):
-    """根路径 → 重定向到同主机的 Vite dev server（端口 5173）。"""
+    """根路径。
+    
+    如果前端已 build（client/javascript/dist/ 存在），
+    返回 index.html → 同端口服务。
+    否则重定向到 Vite dev server（开发模式）。
+    """
+    dist_index = os.path.join(
+        os.path.dirname(__file__), "../client/javascript/dist/index.html"
+    )
+    if os.path.isfile(dist_index):
+        from fastapi.responses import FileResponse
+        return FileResponse(dist_index)
+    # 开发模式：重定向到 Vite dev server
     redirect_url = f"{request.url.scheme}://{request.url.hostname}:5173/"
     return RedirectResponse(url=redirect_url)
 
@@ -235,6 +248,19 @@ async def ice_candidate_session(session_id: str, request: SmallWebRTCPatchReques
 async def inject_test_audio_latest():
     """向最新 session 注入测试音频。JS 端 window.__injectTestAudio() 调用此端点。"""
     return await test_audio.inject_latest()
+
+
+# ═══════════════════════════════════════════════════════════════
+# 静态文件（生产模式）
+# ═══════════════════════════════════════════════════════════════
+
+# 如果前端已 build，挂载静态文件目录。
+# API 路由优先级高于 mount，所以 /start /sessions 等不受影响。
+# html=True：未匹配的路径返回 index.html（SPA 路由支持）。
+_dist_dir = os.path.join(os.path.dirname(__file__), "../client/javascript/dist")
+if os.path.isdir(_dist_dir):
+    app.mount("/", StaticFiles(directory=_dist_dir, html=True), name="client")
+    logger.info(f"静态文件: {_dist_dir}")
 
 
 # ═══════════════════════════════════════════════════════════════
