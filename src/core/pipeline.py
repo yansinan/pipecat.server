@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
+from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.worker import PipelineParams, PipelineWorker
@@ -16,13 +17,15 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
-from pipecat.processors.frameworks.rtvi import RTVIProcessor
 from pipecat.processors.aggregators.llm_text_processor import LLMTextProcessor
+from pipecat.processors.frameworks.rtvi import RTVIProcessor
 from pipecat.services.openai.llm import OpenAILLMService
-
-from src.services.llm import HeadroomLLMService
+from pipecat.turns.user_start.vad_user_turn_start_strategy import VADUserTurnStartStrategy
+from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import TurnAnalyzerUserTurnStopStrategy
+from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from src.services.edge_tts import EdgeTTSService
+from src.services.llm import HeadroomLLMService
 from src.services.whisper_stt import WhisperSTTService
 
 if TYPE_CHECKING:
@@ -62,10 +65,23 @@ def build_pipeline(
     tts = EdgeTTSService(voice=tts_voice)
 
     # --- Context & Aggregators ---
+    # VAD 触发 turn start（用户开口即触发）。
+    # SmartTurn V3 决定 turn end（用户是否真说完了 — 避免抢答）。
+    #
+    # barge-in (用户说话打断 bot TTS)：
+    #   VADUserTurnStartStrategy 继承 BaseUserTurnStartStrategy，
+    #   enable_interruptions 默认 True — 用户开口时 bot 的 TTS 立即停止。
+    #   SmartTurn V3 不参与打断，只决定 turn end。
     context = LLMContext()
     user_agg, assistant_agg = LLMContextAggregatorPair(
         context,
         user_params=LLMUserAggregatorParams(
+            user_turn_strategies=UserTurnStrategies(
+                start=[VADUserTurnStartStrategy()],
+                stop=[TurnAnalyzerUserTurnStopStrategy(
+                    turn_analyzer=LocalSmartTurnAnalyzerV3(),
+                )],
+            ),
             vad_analyzer=SileroVADAnalyzer(),
         ),
     )
