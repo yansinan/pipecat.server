@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "edge-tts",
-    "pipecat-ai[webrtc,whisper]>=1.4.0",
+    "pipecat-ai[local-smart-turn,webrtc,whisper]>=1.4.0",
     "pipecat-ai-prebuilt>=1.0.3",
     "python-dotenv",
 ]
