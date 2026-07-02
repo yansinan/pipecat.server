@@ -31,28 +31,28 @@
         </div>
       </div>
 
-      <!-- Main content area with 50/50 split -->
+      <!-- 内容区：Events + Conversation 同一行内联，自动换行 -->
       <div class="main-content">
-        <!-- Video panel (left) -->
-        <div class="video-panel">
-          <div id="bot-video-container">
-            <div class="video-placeholder">
-              <span>Video will appear here when connected</span>
-            </div>
-          </div>
+        <!-- Events panel (left, inline with conversation) -->
+        <div class="events-panel">
+          <h3>Events</h3>
+          <div id="events-log"></div>
         </div>
 
-        <!-- Conversation panel (right) -->
+        <!-- Conversation panel (right, inline with events) -->
         <div class="conversation-panel">
           <h3>Conversation</h3>
           <div id="conversation-log"></div>
         </div>
       </div>
 
-      <!-- Events panel -->
-      <div class="events-panel">
-        <h3>Events</h3>
-        <div id="events-log"></div>
+      <!-- Video panel（底部，无视频时自动隐藏） -->
+      <div class="video-panel">
+        <div id="bot-video-container">
+          <div class="video-placeholder">
+            <span>Video will appear here when connected</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
