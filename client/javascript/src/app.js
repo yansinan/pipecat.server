@@ -129,9 +129,8 @@ class VoiceChatClient {
             this.addEvent('bot-ready', 'Bot is ready to talk');
           },
           onUserTranscript: (data) => {
-            if (data.final) {
-              this.addConversationMessage(data.text, 'user');
-            }
+            // final=true → 人机对话（You），final=false → 环境语音（ambient）
+            this.addConversationMessage(data.text, data.final ? 'user' : 'ambient');
           },
           onBotTranscript: (data) => {
             this.addConversationMessage(data.text, 'bot');
@@ -181,6 +180,19 @@ class VoiceChatClient {
         this.addEvent('track-stopped', 'Bot video track');
         this.clearVideoTrack();
       }
+    });
+
+    // LLM 内部推理文本 → Conversation 面板（💬 系统类消息）
+    this.client.on('bot-llm-text', (data) => {
+      this.addConversationMessage(data.text || data, 'system');
+    });
+    // TTS 内部文本 → Conversation 面板（💬 系统类消息）
+    this.client.on('bot-tts-text', (data) => {
+      this.addConversationMessage(data.text || data, 'system');
+    });
+    // user 的 LLM 上下文输入（打字发送的完整文本）
+    this.client.on('user-llm-text', (data) => {
+      this.addConversationMessage(data.text || data, 'user');
     });
   }
 
@@ -262,6 +274,20 @@ class VoiceChatClient {
 
     if (role === 'placeholder') {
       messageDiv.textContent = text;
+    } else if (role === 'ambient' || role === 'system') {
+      // 环境语音 / 系统消息 — 不标说话人，缩小字号灰色显示
+      messageDiv.style.fontSize = '0.75rem';
+      messageDiv.style.color = '#9ca3af';
+      const tagSpan = document.createElement('span');
+      tagSpan.className = 'role';
+      tagSpan.textContent = role === 'ambient' ? '🎤 环境' : '⚙️ 系统';
+      tagSpan.style.fontSize = '0.65rem';
+      tagSpan.style.marginRight = '0.5rem';
+      const textSpan = document.createElement('span');
+      textSpan.textContent = text;
+      messageDiv.textContent = '';
+      messageDiv.appendChild(tagSpan);
+      messageDiv.appendChild(textSpan);
     } else {
       const roleSpan = document.createElement('div');
       roleSpan.className = 'role';

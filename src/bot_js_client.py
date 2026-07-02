@@ -36,6 +36,7 @@ from src.core.webrtc_server import (
     register_webrtc_endpoints,
 )
 from src.helpers.test_audio import test_audio
+from src.services.natural_language_recorder import NaturalLanguageRecorder
 
 load_dotenv(override=True)
 
@@ -60,15 +61,19 @@ app.add_middleware(
 handler = create_handler()
 test_audio.set_handler(handler)
 
-# ── Pipeline 启动器（带测试音频注入钩子） ──
+# ── Pipeline 启动器（带测试音频注入钩子 + 自然语言录制） ──
 
 async def _setup_inject_inbound(transport, worker, conn):
     """transport 创建后，把 input() 挂到 connection 上供 inject 查找。"""
     conn._inject_inbound = transport.input()
 
+language_recorder = NaturalLanguageRecorder()
+
 run_pipeline = make_run_pipeline(
     on_transport_created=_setup_inject_inbound,
+    language_recorder=language_recorder,
 )
+logger.info(f"language log dir: {language_recorder.log_dir}")
 
 # ── 注册协议端点 ──
 register_start_endpoint(app)
