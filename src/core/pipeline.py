@@ -8,6 +8,8 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from pipecat.audio.turn.smart_turn.local_smart_turn_v3 import LocalSmartTurnAnalyzerV3
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.pipeline.pipeline import Pipeline
@@ -25,12 +27,30 @@ from pipecat.processors.frameworks.rtvi import (
 from pipecat.processors.frameworks.rtvi import RTVIProcessor
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.turns.user_start.vad_user_turn_start_strategy import VADUserTurnStartStrategy
+from pipecat.turns.user_start.wake_phrase_user_turn_start_strategy import WakePhraseUserTurnStartStrategy
 from pipecat.turns.user_stop.turn_analyzer_user_turn_stop_strategy import TurnAnalyzerUserTurnStopStrategy
 from pipecat.turns.user_turn_strategies import UserTurnStrategies
 
 from src.services.edge_tts import EdgeTTSService
 from src.services.llm import HeadroomLLMService
+from src.services.natural_language_recorder import NaturalLanguageRecorder
 from src.services.whisper_stt import WhisperSTTService
+
+# ─── Wake phrases ──────────────────────────────────────────────
+# The user must say one of these to trigger the bot. Official
+# WakePhraseUserTurnStartStrategy uses re.escape (exact match, not fuzzy),
+# so we enumerate phonetic variants empirically known from Whisper output.
+#
+# - English: "hermes" and close phonetic variants
+# - Chinese: "小智" and 同音字 (小芝/小志/小致), 谐音 (晓智/晓之/小之),
+#   近义词 (知晓/晓得), and pinyin form (Whisper sometimes outputs pinyin)
+DEFAULT_WAKE_PHRASES = (
+    "hermes|hermis|harmes|赫米斯|赫耳墨斯|"
+    "小智|小芝|小志|小致|晓智|晓之|小之|知晓|晓得|"
+    "xiao zhi|xiazhi"
+)
+WAKE_PHRASES = [p.strip() for p in os.environ.get("WAKE_PHRASES", DEFAULT_WAKE_PHRASES).split("|") if p.strip()]
+WAKE_TIMEOUT = float(os.environ.get("WAKE_TIMEOUT", "10.0"))
 
 if TYPE_CHECKING:
     from pipecat.transports.base_transport import BaseTransport
@@ -44,11 +64,17 @@ def build_pipeline(
     llm_model: str = "deepseek-v4-flash",
     whisper_model_size: str = "small",
     tts_voice: str = "zh-CN-XiaoxiaoNeural",
+    language_recorder: NaturalLanguageRecorder | None = None,
 ) -> tuple[PipelineWorker, LLMContext]:
     """Assemble the full voice-agent pipeline.
 
     Order: input() → STT → user_agg → LLM → TTS → output() → assistant_agg
+
+    If `language_recorder` is provided, all natural language from three sources
+    (STT = ambient, PrebuiltUI text = user, bot output = bot) lands in
+    `~/.local/share/pipecat/transcripts/YYYY-MM-DD.md`.
     """
+    from datetime import datetime as _dt
     from dotenv import load_dotenv
 
     load_dotenv(override=True)
@@ -81,7 +107,16 @@ def build_pipeline(
         context,
         user_params=LLMUserAggregatorParams(
             user_turn_strategies=UserTurnStrategies(
-                start=[VADUserTurnStartStrategy()],
+                start=[
+                    # 唤醒词 gate — 必须在第一位，gates VAD 和后续 strategy
+                    # 默认要求用户说 hermes/小智 等（见 WAKE_PHRASES 常量）。
+                    # 命中后保持 AWAKE 状态 WAKE_TIMEOUT 秒，期间 VAD 可正常触发。
+                    WakePhraseUserTurnStartStrategy(
+                        phrases=WAKE_PHRASES,
+                        timeout=WAKE_TIMEOUT,
+                    ),
+                    VADUserTurnStartStrategy(),
+                ],
                 stop=[TurnAnalyzerUserTurnStopStrategy(
                     turn_analyzer=LocalSmartTurnAnalyzerV3(),
                 )],
@@ -160,8 +195,63 @@ def build_pipeline(
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
+        # 5 分钟无交互后不自动断开（默认 IDLE_TIMEOUT_SECS=300）
+        cancel_on_idle_timeout=False,
         rtvi_observer_params=rtvi_params,
     )
+
+    # ─── Natural language recording ─────────────────────────────
+    # Three sources, one recorder:
+    #   - STT finalized transcription → role="ambient"
+    #   - PrebuiltUI text input → role="user"
+    #   - Bot finalized text → role="bot"
+    if language_recorder is not None:
+        @user_agg.event_handler("on_user_turn_message_added")
+        async def _log_user_message_added(aggregator, message):
+            """Fired when a user message is written to the LLM context.
+
+            Covers BOTH STT (ambient speech) and send-text (typed input).
+            user_id field distinguishes:
+              - "ambient"  → STT pickup
+              - None/other  → typed input
+            """
+            text = (getattr(message, "content", None) or "").strip()
+            if not text:
+                return
+            user_id = getattr(message, "user_id", None)
+            role = "ambient" if user_id == "ambient" else "user"
+            ts_raw = getattr(message, "timestamp", None)
+            try:
+                ts = _dt.fromisoformat(ts_raw) if ts_raw else _dt.now()
+            except (TypeError, ValueError):
+                ts = _dt.now()
+            await language_recorder.write(role, text, timestamp=ts)
+
+        @worker.rtvi.event_handler("on_client_message")
+        async def _log_typed_input(rtvi, msg):
+            """Catch-all: PrebuiltUI RTVI messages that aren't user-turns.
+
+            Most typed input flows through LLMMessagesAppendFrame and triggers
+            on_user_turn_message_added. This handler is a safety net for
+            non-standard RTVI message types that contain text the user typed.
+            """
+            # Send-text goes through _handle_send_text → LLMMessagesAppendFrame,
+            # which fires on_user_turn_message_added. The general
+            # on_client_message event does NOT fire for send-text.
+            # We keep this for future RTVI message types (e.g., describe-image).
+            logger.debug(f"[recorder] rtvi msg type={getattr(msg, 'type', None)!r} — already handled by on_user_turn_message_added")
+
+        # Bot output — emitted via RTVIObserver on the rtvi observer.
+        # RTVI's event name in 1.4.0 for finalized assistant text.
+        @worker.rtvi.event_handler("on_bot_output")
+        async def _log_bot_output(rtvi, msg):
+            """Bot finalized an assistant reply."""
+            # msg is a BotOutputMessage dataclass — see pipecat/frames/frames.py
+            text = getattr(msg, "text", None)
+            if not text or not str(text).strip():
+                return
+            await language_recorder.write("bot", str(text).strip(), timestamp=_dt.now())
+
     return worker, context
 
 

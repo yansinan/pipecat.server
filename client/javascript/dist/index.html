@@ -5,51 +5,57 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Voice UI Kit - Vanilla JS</title>
-  <script type="module" crossorigin src="/assets/index-BnDMq6Jq.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-Du6MvPmf.css">
+  <script type="module" crossorigin src="/assets/index-BkAOuAkL.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-ClTh3dKg.css">
 </head>
 
 <body>
-  <div class="container">
-    <!-- Header with controls -->
-    <div class="header">
-      <div class="transport-selector">
-        <label for="transport-select">Transport:</label>
-        <select id="transport-select">
-          <option value="smallwebrtc">SmallWebRTC</option>
-          <option value="daily">Daily</option>
-        </select>
-      </div>
-      <div class="controls">
-        <button id="mic-btn" class="control-btn" disabled>
-          🎤 <span id="mic-status">Mic is Off</span>
-        </button>
-        <button id="connect-btn" class="connect-btn">Connect</button>
-      </div>
-    </div>
+  <!-- 全屏动态背景（screensaver） -->
+  <iframe id="screensaver" src="http://home.z-core.cn:8080/screensaver.web/"></iframe>
 
-    <!-- Main content area with 50/50 split -->
-    <div class="main-content">
-      <!-- Video panel (left) -->
-      <div class="video-panel">
-        <div id="bot-video-container">
-          <div class="video-placeholder">
-            <span>Video will appear here when connected</span>
-          </div>
+  <!-- 浮动 UI 层（包在 app-overlay 中，浮在 screensaver 之上） -->
+  <div id="app-overlay">
+    <div class="container">
+      <!-- Header with controls -->
+      <div class="header">
+        <div class="transport-selector">
+          <label for="transport-select">Transport:</label>
+          <select id="transport-select">
+            <option value="smallwebrtc">SmallWebRTC</option>
+            <option value="daily">Daily</option>
+          </select>
+        </div>
+        <div class="controls">
+          <button id="mic-btn" class="control-btn" disabled>
+            🎤 <span id="mic-status">Mic is Off</span>
+          </button>
+          <button id="connect-btn" class="connect-btn">Connect</button>
         </div>
       </div>
 
-      <!-- Conversation panel (right) -->
-      <div class="conversation-panel">
-        <h3>Conversation</h3>
-        <div id="conversation-log"></div>
-      </div>
-    </div>
+      <!-- Main content area with 50/50 split -->
+      <div class="main-content">
+        <!-- Video panel (left) -->
+        <div class="video-panel">
+          <div id="bot-video-container">
+            <div class="video-placeholder">
+              <span>Video will appear here when connected</span>
+            </div>
+          </div>
+        </div>
 
-    <!-- Events panel -->
-    <div class="events-panel">
-      <h3>Events</h3>
-      <div id="events-log"></div>
+        <!-- Conversation panel (right) -->
+        <div class="conversation-panel">
+          <h3>Conversation</h3>
+          <div id="conversation-log"></div>
+        </div>
+      </div>
+
+      <!-- Events panel -->
+      <div class="events-panel">
+        <h3>Events</h3>
+        <div id="events-log"></div>
+      </div>
     </div>
   </div>
 
